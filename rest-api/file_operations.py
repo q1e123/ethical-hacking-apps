@@ -36,7 +36,30 @@ def validate(path: str) -> Path:
     except Exception:
         raise ValueError("Bad path provided, need to be relative.")
 
+def validate_user_file(path: str, user_id: str) -> Path:
+    user_folder = destination() / user_id
+    user_folder.mkdir(parents=True, exist_ok=True)
+
+    save_to = (user_folder / path).resolve()
+    try:
+        save_to.relative_to(user_folder)
+    except Exception:
+        raise ValueError("Bad path provided; must be relative to user folder.")
+
+    return save_to
+
     return save_to
 
 def change(relative_path: str) -> str:
     return relative_path.replace("../", "").lstrip("/")
+
+def get_user_folder(user_id: str) -> Path:
+    folder = destination() / user_id
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
+def get_user_quota_used(user_id: str) -> int:
+    folder = get_user_folder(user_id)
+    total = sum(f.stat().st_size for f in folder.glob("*") if f.is_file())
+    return total
