@@ -1,9 +1,9 @@
 from fastapi.routing import APIRouter
-from fastapi import UploadFile, File, HTTPException, Request
+from fastapi import UploadFile, File, HTTPException, Request, Depends
 import aiofiles
 import time
 from file_operations import safe_file_name, destination, max_size, change, validate, validate_user_file, get_user_folder, get_user_quota_used
-from jwt_mock import get_user_id
+from auth_routes import get_current_user_id
 from limiter_inst import limiter
 
 router = APIRouter()
@@ -11,12 +11,24 @@ _READ_SIZE = (1 << 16)
 USER_MAX_QUOTA = 1 * 1024 ** 3
 
 def user_key(request: Request):
-    return f"user:{get_user_id(request)}"
+    # Extract token from Authorization header for rate limiting
+    token = request.headers.get("Authorization", "")
+    if token.startswith("Bearer "):
+        token = token[7:]
+    try:
+        from auth_routes import get_user_id_from_token
+        user_id = get_user_id_from_token(token)
+        return f"user:{user_id}"
+    except:
+        return "anonymous"
 
 @router.post("/file")
 @limiter.limit("10/minute", key_func=user_key)
-async def _save_file(request: Request, file: UploadFile = File(...)):
-    user_id = get_user_id(request)
+async def _save_file(
+    request: Request, 
+    file: UploadFile = File(..., description="File to upload"),
+    user_id: str = Depends(get_current_user_id)
+):
     file_name = getattr(file, "filename", None)
 
     try:
@@ -24,10 +36,6 @@ async def _save_file(request: Request, file: UploadFile = File(...)):
     except Exception as ex:
         raise HTTPException(status_code=400, detail=ex)
 
-    # try:
-    #     dst = validate(safe)
-    # except ValueError as ex:
-    #     raise HTTPException(status_code=400, detail=ex)
     try:
         dst = validate_user_file(safe, user_id)
     except ValueError as ex:
@@ -89,5 +97,3 @@ async def _save_file(request: Request, file: UploadFile = File(...)):
         "size": size,
         "stripped_path": change(relative)
     }
-
-#router.post("/file")(_save_file)
